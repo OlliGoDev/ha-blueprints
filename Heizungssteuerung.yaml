@@ -1,0 +1,101 @@
+blueprint:
+  name: Heizungssteuerung
+  description: Regelt die Temperatur in einem Raum nach Zeitplan
+  domain: automation
+  input:
+    schedule:
+      name: Zeitplan
+      description: Zeitplan für die beheizte Zeit
+      selector:
+        entity:
+          filter:
+            - domain: schedule
+    climate:
+      name: Heizung
+      description: Die Heizung die geregelt werden soll.
+      selector:
+        entity:
+          filter:
+            - domain: climate
+    wunschtemp:
+      name: Wunschtemperatur
+      description: Die Entität die die Zieltemperatur zur Arbeitszeit angibt.
+      selector:
+        entity:
+          filter:
+            - domain: input_number
+    holiday:
+      name: Urlaub
+      description: Wenn diese Entität eingeschaltet ist, wird die Temperatur zur Arbeitszeit nicht angehoben.
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
+variables:
+  temp: !input wunschtemp
+  temp_val: "{{ states(temp)|float(1) }}"
+triggers:
+  - trigger: state
+    entity_id: !input schedule
+    to: "on"
+    id: startheizperiode
+  - trigger: state
+    entity_id: !input schedule
+    to: "off"
+    id: endeheizperiode
+  - trigger: state
+    entity_id: !input wunschtemp
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 2
+    id: anpassungwunschtemp
+conditions:
+  - condition: time
+    weekday:
+      - mon
+      - tue
+      - wed
+      - thu
+      - fri
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id:
+              - endeheizperiode
+        sequence:
+          - action: climate.set_temperature
+            metadata: {}
+            data:
+              temperature: 18
+            target:
+              entity_id: !input climate
+      - conditions:
+          - condition: trigger
+            id:
+              - startheizperiode
+          - condition: state
+            entity_id: !input holiday
+            state: "off"
+        sequence:
+          - action: climate.set_temperature
+            metadata: {}
+            data:
+              temperature: "{{temp_val}}"
+            target:
+              entity_id: !input climate
+      - conditions:
+          - condition: trigger
+            id:
+              - anpassungwunschtemp
+          - condition: state
+            entity_id: !input schedule
+            state: "on"
+        sequence:
+          - action: climate.set_temperature
+            metadata: {}
+            data:
+              temperature: "{{temp_val}}"
+            target:
+              entity_id: !input climate
